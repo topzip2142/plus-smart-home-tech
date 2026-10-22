@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package telemetry.service.collector;
+
+import "telemetry/messages/sensor_event.proto";
+import "telemetry/messages/hub_event.proto";
+import "google/protobuf/empty.proto";
+
+service CollectorController {
+    rpc CollectSensorEvent(telemetry.message.event.SensorEventProto) returns (google.protobuf.Empty);
+
+    rpc CollectHubEvent(telemetry.message.event.HubEventProto) returns (google.protobuf.Empty);
+}

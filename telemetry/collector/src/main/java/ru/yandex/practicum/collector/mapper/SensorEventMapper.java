@@ -1,54 +1,74 @@
 package ru.yandex.practicum.collector.mapper;
 
+import com.google.protobuf.Timestamp;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
-import ru.yandex.practicum.collector.dto.sensor.*;
+import org.apache.avro.specific.SpecificRecordBase;
+import ru.yandex.practicum.grpc.telemetry.event.SensorEventProto;
 import ru.yandex.practicum.kafka.telemetry.event.*;
+
+import java.time.Instant;
 
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class SensorEventMapper {
 
-    public static SensorEventAvro toAvro(SensorEvent event) {
+    public static SensorEventAvro toAvro(SensorEventProto event) {
+        Timestamp ts = event.getTimestamp();
+
         SensorEventAvro.Builder b = SensorEventAvro.newBuilder();
         b.setHubId(event.getHubId());
         b.setId(event.getId());
-        b.setTimestamp(event.getTimestamp());
+        b.setTimestamp(Instant.ofEpochSecond(ts.getSeconds(), ts.getNanos()));
         b.setPayload(getPayload(event));
         return b.build();
     }
 
-    private static Object getPayload(SensorEvent event) {
-        if (event instanceof ClimateSensorEvent x) {
-            return ClimateSensorAvro.newBuilder()
-                    .setCo2Level(x.getCo2Level())
-                    .setHumidity(x.getHumidity())
-                    .setTemperatureC(x.getTemperatureC())
-                    .build();
+    private static SpecificRecordBase getPayload(SensorEventProto event) {
+        SensorEventProto.PayloadCase payloadCase = event.getPayloadCase();
+
+        switch (payloadCase) {
+            case TEMPERATURE_SENSOR -> {
+                var temperatureEvent = event.getTemperatureSensor();
+
+                return TemperatureSensorAvro.newBuilder()
+                        .setTemperatureC(temperatureEvent.getTemperatureC())
+                        .setTemperatureF(temperatureEvent.getTemperatureF())
+                        .build();
+            }
+            case CLIMATE_SENSOR -> {
+                var climateEvent = event.getClimateSensor();
+
+                return ClimateSensorAvro.newBuilder()
+                        .setCo2Level(climateEvent.getCo2Level())
+                        .setHumidity(climateEvent.getHumidity())
+                        .setTemperatureC(climateEvent.getTemperatureC())
+                        .build();
+            }
+            case LIGHT_SENSOR -> {
+                var lightEvent = event.getLightSensor();
+
+                return LightSensorAvro.newBuilder()
+                        .setLinkQuality(lightEvent.getLinkQuality())
+                        .setLuminosity(lightEvent.getLuminosity())
+                        .build();
+            }
+            case MOTION_SENSOR -> {
+                var motionEvent = event.getMotionSensor();
+
+                return MotionSensorAvro.newBuilder()
+                        .setLinkQuality(motionEvent.getLinkQuality())
+                        .setMotion(motionEvent.getMotion())
+                        .setVoltage(motionEvent.getVoltage())
+                        .build();
+            }
+            case SWITCH_SENSOR -> {
+                var switchEvent = event.getSwitchSensor();
+
+                return SwitchSensorAvro.newBuilder()
+                        .setState(switchEvent.getState())
+                        .build();
+            }
+            default -> throw new IllegalArgumentException("Unknown sensor event: " + event);
         }
-        if (event instanceof LightSensorEvent x) {
-            return LightSensorAvro.newBuilder()
-                    .setLinkQuality(x.getLinkQuality())
-                    .setLuminosity(x.getLuminosity())
-                    .build();
-        }
-        if (event instanceof MotionSensorEvent x) {
-            return MotionSensorAvro.newBuilder()
-                    .setLinkQuality(x.getLinkQuality())
-                    .setMotion(x.getMotion())
-                    .setVoltage(x.getVoltage())
-                    .build();
-        }
-        if (event instanceof SwitchSensorEvent x) {
-            return SwitchSensorAvro.newBuilder()
-                    .setState(x.getState())
-                    .build();
-        }
-        if (event instanceof TemperatureSensorEvent x) {
-            return TemperatureSensorAvro.newBuilder()
-                    .setTemperatureC(x.getTemperatureC())
-                    .setTemperatureF(x.getTemperatureF())
-                    .build();
-        }
-        throw new IllegalArgumentException("Unknown sensor event: " + event);
     }
 }

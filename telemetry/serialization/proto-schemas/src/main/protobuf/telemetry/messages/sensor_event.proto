@@ -2,5 +2,48 @@ syntax = "proto3";
 
 package telemetry.message.event;
 
+import "google/protobuf/timestamp.proto";
+
 option java_multiple_files = true;
 option java_package = "ru.yandex.practicum.grpc.telemetry.event";
+
+// ===== Общее событие датчика =====
+message SensorEventProto {
+    string id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    string hub_id = 3;
+
+    oneof payload {
+        MotionSensorEventProto      motion_sensor      = 4;
+        TemperatureSensorEventProto temperature_sensor = 5;
+        LightSensorEventProto       light_sensor       = 6;
+        ClimateSensorEventProto     climate_sensor     = 7;
+        SwitchSensorEventProto      switch_sensor      = 8;
+    }
+}
+
+message MotionSensorEventProto {
+    int32 link_quality = 1;
+    bool  motion       = 2;
+    int32 voltage      = 3;
+}
+
+message TemperatureSensorEventProto {
+    int32 temperature_c = 1;
+    int32 temperature_f = 2;
+}
+
+message LightSensorEventProto {
+    int32 link_quality = 1;
+    int32 luminosity   = 2;
+}
+
+message ClimateSensorEventProto {
+    int32 temperature_c = 1;
+    int32 humidity      = 2;
+    int32 co2_level     = 3;
+}
+
+message SwitchSensorEventProto {
+    bool state = 1;
+}
