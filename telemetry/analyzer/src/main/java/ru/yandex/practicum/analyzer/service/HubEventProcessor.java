@@ -14,6 +14,8 @@ import ru.yandex.practicum.kafka.telemetry.event.HubEventAvro;
 
 import java.time.Duration;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 
 @Slf4j
 @Component
@@ -34,25 +36,36 @@ public class HubEventProcessor implements Runnable {
                 ConsumerRecords<String, HubEventAvro> records = hubEventConsumer.poll(
                         Duration.ofMillis(kafkaProperties.getPollTimeoutMs()));
 
+                Set<TopicPartition> failedPartitions = new HashSet<>();
+
                 for (ConsumerRecord<String, HubEventAvro> record : records) {
+                    TopicPartition tp = new TopicPartition(record.topic(), record.partition());
+
+                    if (failedPartitions.contains(tp)) {
+                        continue;
+                    }
+
                     try {
                         HubEventAvro event = record.value();
                         log.debug("Processing hub event from hub: {}", event.getHubId());
                         hubEventHandler.handle(event.getHubId(), event.getPayload());
 
                         hubEventConsumer.commitSync(Collections.singletonMap(
-                                new TopicPartition(record.topic(), record.partition()),
-                                new OffsetAndMetadata(record.offset() + 1)));
+                                tp, new OffsetAndMetadata(record.offset() + 1)));
+                    } catch (WakeupException e) {
+                        throw e;
                     } catch (Exception e) {
-                        log.error("Failed to process hub event at offset {}: {}",
-                                record.offset(), record.value(), e);
+                        failedPartitions.add(tp);
+                        log.error("Failed to process hub event at offset {} (partition {}), " +
+                                        "will retry after restart",
+                                record.offset(), record.partition(), e);
                     }
                 }
             }
         } catch (WakeupException ignored) {
             log.info("HubEventProcessor shutdown signal received");
         } catch (Exception e) {
-            log.error("Error while processing hub events", e);
+            log.error("Fatal error while processing hub events", e);
         } finally {
             hubEventConsumer.close();
         }

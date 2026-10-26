@@ -10,17 +10,11 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.WakeupException;
 import org.springframework.stereotype.Component;
 import ru.yandex.practicum.analyzer.config.KafkaAnalyzerProperties;
-import ru.yandex.practicum.analyzer.entity.Action;
-import ru.yandex.practicum.analyzer.entity.Condition;
-import ru.yandex.practicum.analyzer.entity.ConditionType;
-import ru.yandex.practicum.analyzer.entity.Scenario;
-import ru.yandex.practicum.analyzer.entity.ScenarioAction;
-import ru.yandex.practicum.analyzer.entity.ScenarioCondition;
+import ru.yandex.practicum.analyzer.entity.*;
 import ru.yandex.practicum.analyzer.repository.ScenarioActionRepository;
 import ru.yandex.practicum.analyzer.repository.ScenarioConditionRepository;
 import ru.yandex.practicum.analyzer.repository.ScenarioRepository;
 import ru.yandex.practicum.grpc.telemetry.event.ActionTypeProto;
-import ru.yandex.practicum.grpc.telemetry.event.ConditionOperationProto;
 import ru.yandex.practicum.grpc.telemetry.event.DeviceActionProto;
 import ru.yandex.practicum.grpc.telemetry.event.DeviceActionRequest;
 import ru.yandex.practicum.grpc.telemetry.hubrouter.HubRouterControllerGrpc;
@@ -34,8 +28,11 @@ import ru.yandex.practicum.kafka.telemetry.event.TemperatureSensorAvro;
 
 import java.time.Duration;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -72,24 +69,29 @@ public class SnapshotProcessor {
                 ConsumerRecords<String, SensorsSnapshotAvro> records = snapshotConsumer.poll(
                         Duration.ofMillis(kafkaProperties.getPollTimeoutMs()));
 
-                if (records.isEmpty()) {
-                    continue;
-                }
+                Set<TopicPartition> failedPartitions = new HashSet<>();
 
                 for (ConsumerRecord<String, SensorsSnapshotAvro> record : records) {
+                    TopicPartition tp = new TopicPartition(record.topic(), record.partition());
+
+                    if (failedPartitions.contains(tp)) {
+                        continue;
+                    }
+
                     try {
                         SensorsSnapshotAvro snapshot = record.value();
                         log.debug("Processing snapshot from hub: {}", snapshot.getHubId());
                         processSnapshot(snapshot);
 
                         snapshotConsumer.commitSync(Collections.singletonMap(
-                                new TopicPartition(record.topic(), record.partition()),
-                                new OffsetAndMetadata(record.offset() + 1)));
+                                tp, new OffsetAndMetadata(record.offset() + 1)));
                     } catch (WakeupException e) {
                         throw e;
                     } catch (Exception e) {
-                        log.error("Failed to process snapshot at offset {}: {}",
-                                record.offset(), record.value(), e);
+                        failedPartitions.add(tp);
+                        log.error("Failed to process snapshot at offset {} (partition {}), " +
+                                        "will retry after restart",
+                                record.offset(), record.partition(), e);
                     }
                 }
             }
@@ -112,9 +114,18 @@ public class SnapshotProcessor {
             return;
         }
 
+        Map<Long, List<ScenarioCondition>> conditionsByScenario =
+                scenarioConditionRepository.findByScenarioHubId(hubId).stream()
+                        .collect(Collectors.groupingBy(sc -> sc.getScenario().getId()));
+        Map<Long, List<ScenarioAction>> actionsByScenario =
+                scenarioActionRepository.findByScenarioHubId(hubId).stream()
+                        .collect(Collectors.groupingBy(sa -> sa.getScenario().getId()));
+
         for (Scenario scenario : scenarios) {
-            List<ScenarioCondition> conditions = scenarioConditionRepository.findByScenarioId(scenario.getId());
-            List<ScenarioAction> actions = scenarioActionRepository.findByScenarioId(scenario.getId());
+            List<ScenarioCondition> conditions =
+                    conditionsByScenario.getOrDefault(scenario.getId(), List.of());
+            List<ScenarioAction> actions =
+                    actionsByScenario.getOrDefault(scenario.getId(), List.of());
 
             if (conditions.isEmpty() || actions.isEmpty()) {
                 continue;
@@ -152,12 +163,9 @@ public class SnapshotProcessor {
             return false;
         }
 
-        ConditionOperationProto operation;
-        try {
-            operation = ConditionOperationProto.valueOf(condition.getOperation());
-        } catch (IllegalArgumentException e) {
-            log.warn("Unknown condition operation {} for sensor {}, skipping",
-                    condition.getOperation(), sensorId);
+        ConditionOperation operation = condition.getOperation();
+        if (operation == null) {
+            log.warn("Condition operation is null for sensor {}, skipping", sensorId);
             return false;
         }
 
@@ -166,7 +174,6 @@ public class SnapshotProcessor {
             case GREATER_THAN -> sensorValue > ref;
             case LOWER_THAN -> sensorValue < ref;
             case EQUALS -> sensorValue == ref;
-            default -> false;
         };
     }
 
@@ -219,19 +226,23 @@ public class SnapshotProcessor {
     private void executeActions(String hubId, String scenarioName, List<ScenarioAction> actions, long snapshotTimestamp) {
         for (ScenarioAction sa : actions) {
             Action entityAction = sa.getAction();
-
-            ActionTypeProto actionType;
-            try {
-                actionType = ActionTypeProto.valueOf(entityAction.getType());
-            } catch (IllegalArgumentException e) {
-                log.warn("Unknown action type {} for sensor {} in scenario '{}', skipping",
-                        entityAction.getType(), sa.getSensor().getId(), scenarioName);
+            ActionType actionType = entityAction.getType();
+            if (actionType == null) {
+                log.warn("Action type is null for sensor {} in scenario '{}', skipping",
+                        sa.getSensor().getId(), scenarioName);
                 continue;
             }
 
+            ActionTypeProto actionTypeProto = switch (actionType) {
+                case ACTIVATE -> ActionTypeProto.ACTIVATE;
+                case DEACTIVATE -> ActionTypeProto.DEACTIVATE;
+                case INVERSE -> ActionTypeProto.INVERSE;
+                case SET_VALUE -> ActionTypeProto.SET_VALUE;
+            };
+
             DeviceActionProto.Builder builder = DeviceActionProto.newBuilder()
                     .setSensorId(sa.getSensor().getId())
-                    .setType(actionType);
+                    .setType(actionTypeProto);
             if (entityAction.getValue() != null) {
                 builder.setValue(entityAction.getValue());
             }

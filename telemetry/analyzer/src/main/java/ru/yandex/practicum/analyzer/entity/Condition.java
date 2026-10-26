@@ -28,8 +28,9 @@ public class Condition {
     @Column(name = "type")
     private ConditionType type;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "operation")
-    private String operation;
+    private ConditionOperation operation;
 
     @Column(name = "value")
     private Integer value;

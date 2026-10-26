@@ -62,20 +62,35 @@ public class HubEventHandler {
             log.debug("Sensor {} not found for hub {}, skipping removal", sensorId, hubId);
             return;
         }
-
-        List<ScenarioCondition> conditions = scenarioConditionRepository.findAll().stream()
-                .filter(sc -> sc.getSensor().getId().equals(sensorId))
+        List<ScenarioCondition> conditions = scenarioConditionRepository.findBySensorId(sensorId);
+        List<Long> conditionIds = conditions.stream()
+                .map(sc -> sc.getCondition().getId())
                 .toList();
         scenarioConditionRepository.deleteAll(conditions);
+        if (!conditionIds.isEmpty()) {
+            conditionRepository.deleteAllById(conditionIds);
+        }
 
-        List<ScenarioAction> actions = scenarioActionRepository.findAll().stream()
-                .filter(sa -> sa.getSensor().getId().equals(sensorId))
+        List<ScenarioAction> actions = scenarioActionRepository.findBySensorId(sensorId);
+        List<Long> actionIds = actions.stream()
+                .map(sa -> sa.getAction().getId())
                 .toList();
         scenarioActionRepository.deleteAll(actions);
+        if (!actionIds.isEmpty()) {
+            actionRepository.deleteAllById(actionIds);
+        }
 
         for (Scenario scenario : scenarioRepository.findByHubId(hubId)) {
             if (scenarioConditionRepository.findByScenarioId(scenario.getId()).isEmpty()) {
+                List<Long> leftoverActionIds = scenarioActionRepository
+                        .findByScenarioId(scenario.getId()).stream()
+                        .map(sa -> sa.getAction().getId())
+                        .toList();
+
                 scenarioActionRepository.deleteByScenarioId(scenario.getId());
+                if (!leftoverActionIds.isEmpty()) {
+                    actionRepository.deleteAllById(leftoverActionIds);
+                }
                 scenarioRepository.delete(scenario);
                 log.info("Scenario {} deleted (no conditions left)", scenario.getName());
             }
@@ -88,27 +103,42 @@ public class HubEventHandler {
     private void handleScenarioAdded(String hubId, ScenarioAddedEventAvro event) {
         String scenarioName = event.getName();
 
-        scenarioRepository.findByHubIdAndName(hubId, scenarioName).ifPresent(old -> {
-            Long oldId = old.getId();
-            scenarioConditionRepository.deleteByScenarioId(oldId);
-            scenarioActionRepository.deleteByScenarioId(oldId);
-            scenarioRepository.deleteById(oldId);
-            log.debug("Deleted existing scenario '{}' for hub {}", scenarioName, hubId);
-        });
+        Scenario scenario = scenarioRepository.findByHubIdAndName(hubId, scenarioName)
+                .orElseGet(() -> {
+                    Scenario created = new Scenario();
+                    created.setHubId(hubId);
+                    created.setName(scenarioName);
+                    return scenarioRepository.save(created);
+                });
 
-        Scenario scenario = new Scenario();
-        scenario.setHubId(hubId);
-        scenario.setName(scenarioName);
-        scenario = scenarioRepository.save(scenario);
         Long scenarioId = scenario.getId();
+
+        List<Long> oldConditionIds = scenarioConditionRepository.findByScenarioId(scenarioId).stream()
+                .map(sc -> sc.getCondition().getId())
+                .toList();
+        List<Long> oldActionIds = scenarioActionRepository.findByScenarioId(scenarioId).stream()
+                .map(sa -> sa.getAction().getId())
+                .toList();
+
+        scenarioConditionRepository.deleteByScenarioId(scenarioId);
+        scenarioActionRepository.deleteByScenarioId(scenarioId);
+
+        if (!oldConditionIds.isEmpty()) {
+            conditionRepository.deleteAllById(oldConditionIds);
+        }
+        if (!oldActionIds.isEmpty()) {
+            actionRepository.deleteAllById(oldActionIds);
+        }
 
         for (ScenarioConditionAvro conditionAvro : event.getConditions()) {
             ConditionType conditionType;
+            ConditionOperation conditionOperation;
             try {
                 conditionType = ConditionType.valueOf(conditionAvro.getType().name());
+                conditionOperation = ConditionOperation.valueOf(conditionAvro.getOperation().name());
             } catch (IllegalArgumentException e) {
-                log.warn("Unknown condition type {} in scenario '{}', skipping",
-                        conditionAvro.getType(), scenarioName);
+                log.warn("Unknown condition type/operation ({}/{}) in scenario '{}', skipping",
+                        conditionAvro.getType(), conditionAvro.getOperation(), scenarioName);
                 continue;
             }
 
@@ -123,7 +153,7 @@ public class HubEventHandler {
 
             Condition condition = new Condition();
             condition.setType(conditionType);
-            condition.setOperation(conditionAvro.getOperation().name());
+            condition.setOperation(conditionOperation);
             condition.setValue(extractConditionValue(conditionAvro));
             condition = conditionRepository.save(condition);
 
@@ -134,6 +164,15 @@ public class HubEventHandler {
         }
 
         for (DeviceActionAvro actionAvro : event.getActions()) {
+            ActionType actionType;
+            try {
+                actionType = ActionType.valueOf(actionAvro.getType().name());
+            } catch (IllegalArgumentException e) {
+                log.warn("Unknown action type {} in scenario '{}', skipping",
+                        actionAvro.getType(), scenarioName);
+                continue;
+            }
+
             Sensor sensor = sensorRepository
                     .findByIdAndHubId(actionAvro.getSensorId(), hubId)
                     .orElse(null);
@@ -144,7 +183,7 @@ public class HubEventHandler {
             }
 
             Action action = new Action();
-            action.setType(actionAvro.getType().name());
+            action.setType(actionType);
             action.setValue(actionAvro.getValue());
             action = actionRepository.save(action);
 
@@ -154,7 +193,7 @@ public class HubEventHandler {
                     new ScenarioAction(saId, scenario, sensor, action));
         }
 
-        log.info("Scenario '{}' added for hub {} with {} conditions, {} actions",
+        log.info("Scenario '{}' added/updated for hub {} with {} conditions, {} actions",
                 scenarioName, hubId,
                 event.getConditions().size(), event.getActions().size());
     }
@@ -163,8 +202,24 @@ public class HubEventHandler {
         String scenarioName = event.getName();
         scenarioRepository.findByHubIdAndName(hubId, scenarioName).ifPresentOrElse(scenario -> {
             Long scenarioId = scenario.getId();
+
+            List<Long> conditionIds = scenarioConditionRepository.findByScenarioId(scenarioId).stream()
+                    .map(sc -> sc.getCondition().getId())
+                    .toList();
+            List<Long> actionIds = scenarioActionRepository.findByScenarioId(scenarioId).stream()
+                    .map(sa -> sa.getAction().getId())
+                    .toList();
+
             scenarioConditionRepository.deleteByScenarioId(scenarioId);
             scenarioActionRepository.deleteByScenarioId(scenarioId);
+
+            if (!conditionIds.isEmpty()) {
+                conditionRepository.deleteAllById(conditionIds);
+            }
+            if (!actionIds.isEmpty()) {
+                actionRepository.deleteAllById(actionIds);
+            }
+
             scenarioRepository.deleteById(scenarioId);
             log.info("Scenario '{}' removed from hub {}", scenarioName, hubId);
         }, () -> log.debug("Scenario '{}' not found for hub {}, skipping removal",
