@@ -23,6 +23,8 @@ analyzer:
     consumer:
       hub-events-group-id: analyzer-hub-events
       snapshots-group-id: analyzer-snapshots
+      auto-offset-reset: earliest
+      enable-auto-commit: false
     poll-timeout-ms: 500
 
 grpc:

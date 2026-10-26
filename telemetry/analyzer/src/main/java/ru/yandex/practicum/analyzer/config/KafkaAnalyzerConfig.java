@@ -22,7 +22,7 @@ public class KafkaAnalyzerConfig {
         this.kafkaProperties = kafkaProperties;
     }
 
-    @Bean
+    @Bean(destroyMethod = "")
     public KafkaConsumer<String, HubEventAvro> hubEventConsumer(
             @Value("${spring.kafka.bootstrap-servers}") String bootstrapServers) {
         Properties config = new Properties();
@@ -30,12 +30,14 @@ public class KafkaAnalyzerConfig {
         config.put(ConsumerConfig.GROUP_ID_CONFIG, kafkaProperties.getConsumer().getHubEventsGroupId());
         config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, HubEventDeserializer.class);
-        config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
-        config.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, true);
+        config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,
+                kafkaProperties.getConsumer().getAutoOffsetReset());
+        config.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG,
+                kafkaProperties.getConsumer().isEnableAutoCommit());
         return new KafkaConsumer<>(config);
     }
 
-    @Bean
+    @Bean(destroyMethod = "")
     public KafkaConsumer<String, SensorsSnapshotAvro> snapshotConsumer(
             @Value("${spring.kafka.bootstrap-servers}") String bootstrapServers) {
         Properties config = new Properties();
@@ -43,8 +45,10 @@ public class KafkaAnalyzerConfig {
         config.put(ConsumerConfig.GROUP_ID_CONFIG, kafkaProperties.getConsumer().getSnapshotsGroupId());
         config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, SensorsSnapshotDeserializer.class);
-        config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
-        config.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+        config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,
+                kafkaProperties.getConsumer().getAutoOffsetReset());
+        config.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG,
+                kafkaProperties.getConsumer().isEnableAutoCommit());
         return new KafkaConsumer<>(config);
     }
 }

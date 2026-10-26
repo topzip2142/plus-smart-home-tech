@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import ru.yandex.practicum.analyzer.config.KafkaAnalyzerProperties;
 import ru.yandex.practicum.analyzer.entity.Action;
 import ru.yandex.practicum.analyzer.entity.Condition;
+import ru.yandex.practicum.analyzer.entity.ConditionType;
 import ru.yandex.practicum.analyzer.entity.Scenario;
 import ru.yandex.practicum.analyzer.entity.ScenarioAction;
 import ru.yandex.practicum.analyzer.entity.ScenarioCondition;
@@ -20,7 +21,6 @@ import ru.yandex.practicum.analyzer.repository.ScenarioConditionRepository;
 import ru.yandex.practicum.analyzer.repository.ScenarioRepository;
 import ru.yandex.practicum.grpc.telemetry.event.ActionTypeProto;
 import ru.yandex.practicum.grpc.telemetry.event.ConditionOperationProto;
-import ru.yandex.practicum.grpc.telemetry.event.ConditionTypeProto;
 import ru.yandex.practicum.grpc.telemetry.event.DeviceActionProto;
 import ru.yandex.practicum.grpc.telemetry.event.DeviceActionRequest;
 import ru.yandex.practicum.grpc.telemetry.hubrouter.HubRouterControllerGrpc;
@@ -34,7 +34,6 @@ import ru.yandex.practicum.kafka.telemetry.event.TemperatureSensorAvro;
 
 import java.time.Duration;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -78,34 +77,28 @@ public class SnapshotProcessor {
                 }
 
                 for (ConsumerRecord<String, SensorsSnapshotAvro> record : records) {
-                    SensorsSnapshotAvro snapshot = record.value();
-                    String hubId = snapshot.getHubId();
-                    log.debug("Processing snapshot from hub: {}", hubId);
+                    try {
+                        SensorsSnapshotAvro snapshot = record.value();
+                        log.debug("Processing snapshot from hub: {}", snapshot.getHubId());
+                        processSnapshot(snapshot);
 
-                    processSnapshot(snapshot);
+                        snapshotConsumer.commitSync(Collections.singletonMap(
+                                new TopicPartition(record.topic(), record.partition()),
+                                new OffsetAndMetadata(record.offset() + 1)));
+                    } catch (WakeupException e) {
+                        throw e;
+                    } catch (Exception e) {
+                        log.error("Failed to process snapshot at offset {}: {}",
+                                record.offset(), record.value(), e);
+                    }
                 }
-
-                // Ручной коммит смещений
-                Map<TopicPartition, OffsetAndMetadata> offsets = new HashMap<>();
-                for (ConsumerRecord<String, SensorsSnapshotAvro> record : records) {
-                    offsets.put(
-                            new TopicPartition(record.topic(), record.partition()),
-                            new OffsetAndMetadata(record.offset() + 1)
-                    );
-                }
-                snapshotConsumer.commitSync(offsets);
-                log.debug("Committed {} offsets", offsets.size());
             }
         } catch (WakeupException ignored) {
             log.info("SnapshotProcessor shutdown signal received");
         } catch (Exception e) {
-            log.error("Error while processing snapshots", e);
+            log.error("Fatal error while processing snapshots", e);
         } finally {
-            try {
-                snapshotConsumer.commitSync();
-            } finally {
-                snapshotConsumer.close();
-            }
+            snapshotConsumer.close();
         }
     }
 
@@ -141,6 +134,12 @@ public class SnapshotProcessor {
         String sensorId = sc.getSensor().getId();
         Condition condition = sc.getCondition();
 
+        Integer refValue = condition.getValue();
+        if (refValue == null) {
+            log.warn("Condition value is null for sensor {} in scenario, skipping", sensorId);
+            return false;
+        }
+
         SensorStateAvro state = sensorsState.get(sensorId);
         if (state == null) {
             log.debug("Sensor {} not found in snapshot state", sensorId);
@@ -153,19 +152,28 @@ public class SnapshotProcessor {
             return false;
         }
 
-        int refValue = condition.getValue();
-        ConditionOperationProto operation = ConditionOperationProto.valueOf(condition.getOperation());
+        ConditionOperationProto operation;
+        try {
+            operation = ConditionOperationProto.valueOf(condition.getOperation());
+        } catch (IllegalArgumentException e) {
+            log.warn("Unknown condition operation {} for sensor {}, skipping",
+                    condition.getOperation(), sensorId);
+            return false;
+        }
 
+        int ref = refValue;
         return switch (operation) {
-            case GREATER_THAN -> sensorValue > refValue;
-            case LOWER_THAN -> sensorValue < refValue;
-            case EQUALS -> sensorValue.equals(refValue);
+            case GREATER_THAN -> sensorValue > ref;
+            case LOWER_THAN -> sensorValue < ref;
+            case EQUALS -> sensorValue == ref;
             default -> false;
         };
     }
 
-    private Integer extractSensorValue(String conditionType, SensorStateAvro state) {
-        ConditionTypeProto type = ConditionTypeProto.valueOf(conditionType);
+    private Integer extractSensorValue(ConditionType type, SensorStateAvro state) {
+        if (type == null) {
+            return null;
+        }
         return switch (type) {
             case TEMPERATURE -> {
                 if (state.getData() instanceof TemperatureSensorAvro temp) {
@@ -205,16 +213,25 @@ public class SnapshotProcessor {
                 }
                 yield null;
             }
-            default -> null;
         };
     }
 
     private void executeActions(String hubId, String scenarioName, List<ScenarioAction> actions, long snapshotTimestamp) {
         for (ScenarioAction sa : actions) {
             Action entityAction = sa.getAction();
+
+            ActionTypeProto actionType;
+            try {
+                actionType = ActionTypeProto.valueOf(entityAction.getType());
+            } catch (IllegalArgumentException e) {
+                log.warn("Unknown action type {} for sensor {} in scenario '{}', skipping",
+                        entityAction.getType(), sa.getSensor().getId(), scenarioName);
+                continue;
+            }
+
             DeviceActionProto.Builder builder = DeviceActionProto.newBuilder()
                     .setSensorId(sa.getSensor().getId())
-                    .setType(ActionTypeProto.valueOf(entityAction.getType()));
+                    .setType(actionType);
             if (entityAction.getValue() != null) {
                 builder.setValue(entityAction.getValue());
             }

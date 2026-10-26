@@ -2,6 +2,8 @@ package ru.yandex.practicum.analyzer.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -22,8 +24,9 @@ public class Condition {
     @Column(name = "id")
     private Long id;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "type")
-    private String type;
+    private ConditionType type;
 
     @Column(name = "operation")
     private String operation;

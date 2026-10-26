@@ -21,5 +21,7 @@ public class KafkaAnalyzerProperties {
     public static class Consumer {
         private String hubEventsGroupId;
         private String snapshotsGroupId;
+        private String autoOffsetReset = "earliest";
+        private boolean enableAutoCommit = false;
     }
 }
