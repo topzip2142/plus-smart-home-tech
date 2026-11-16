@@ -1,0 +1,34 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/telemetry_analyzer
+    username: dbuser
+    password: 12345
+  jpa:
+    hibernate:
+      ddl-auto: none
+  sql:
+    init:
+      mode: always
+      platform: postgresql
+
+analyzer:
+  kafka:
+    topics:
+      hubs: ${telemetry.kafka.topics.hubs}
+      snapshots: ${telemetry.kafka.topics.snapshots}
+    consumer:
+      hub-events-group-id: analyzer-hub-events
+      snapshots-group-id: analyzer-snapshots
+    poll-timeout-ms: 500
+
+grpc:
+  client:
+    hub-router:
+      address: 'static://localhost:59090'
+      enableKeepAlive: true
+      keepAliveWithoutCalls: true
+      negotiationType: plaintext
+
+logging:
+  level:
+    ru.yandex.practicum.analyzer: DEBUG

@@ -1,0 +1,12 @@
+server:
+  port: 8080
+
+grpc:
+  server:
+    port: 59091
+
+collector:
+  kafka:
+    topics:
+      sensors: ${telemetry.kafka.topics.sensors}
+      hubs: ${telemetry.kafka.topics.hubs}
