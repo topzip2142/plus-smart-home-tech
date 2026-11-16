@@ -1,0 +1,10 @@
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+
+telemetry:
+  kafka:
+    topics:
+      sensors: telemetry.sensors.v1
+      hubs: telemetry.hubs.v1
+      snapshots: telemetry.snapshots.v1

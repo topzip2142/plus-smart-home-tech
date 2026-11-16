@@ -1,0 +1,8 @@
+aggregator:
+  kafka:
+    poll-timeout-ms: 500
+    topics:
+      sensors: ${telemetry.kafka.topics.sensors}
+      snapshots: ${telemetry.kafka.topics.snapshots}
+    consumer:
+      group-id: aggregator-sensor-events

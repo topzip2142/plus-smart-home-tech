@@ -1,10 +1,13 @@
-server:
-  port: 8080
 spring:
-  kafka:
-    bootstrap-servers: localhost:9092
-collector:
-  kafka:
-    topics:
-      sensors: telemetry.sensors.v1
-      hubs: telemetry.hubs.v1
+  application:
+    name: collector
+  config:
+    import: configserver:http://localhost:8888
+  cloud:
+    config:
+      fail-fast: true
+      retry:
+        max-attempts: 6
+        initial-interval: 1000
+        multiplier: 1.1
+        max-interval: 2000
