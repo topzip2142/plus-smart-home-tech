@@ -2,7 +2,10 @@ package ru.yandex.practicum.order.exception;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -38,5 +41,28 @@ public class GlobalExceptionHandler {
     public ErrorResponse handleGeneral(Exception e) {
         log.error("Внутренняя ошибка сервера", e);
         return new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(), "Внутренняя ошибка сервера");
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ErrorResponse handleUnreadable(HttpMessageNotReadableException e) {
+        log.warn("Некорректное тело запроса: {}", e.getMessage());
+        return new ErrorResponse(HttpStatus.BAD_REQUEST.value(), "Некорректное тело запроса");
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleIntegrity(DataIntegrityViolationException e) {
+        log.warn("Нарушение целостности данных: {}", e.getMessage());
+        return new ErrorResponse(HttpStatus.CONFLICT.value(),
+                "Заказ нарушает ограничения целостности данных");
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleOptimisticLock(ObjectOptimisticLockingFailureException e) {
+        log.warn("Конфликт конкурентного доступа: {}", e.getMessage());
+        return new ErrorResponse(HttpStatus.CONFLICT.value(),
+                "Конфликт конкурентного доступа. Повторите операцию.");
     }
 }
