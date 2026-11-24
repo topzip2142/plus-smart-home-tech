@@ -7,9 +7,26 @@ spring:
     username: dbuser
     password: 12345
   jpa:
-    open-in-view: false
     hibernate:
-      ddl-auto: none
+      ddl-auto: update
+    show-sql: false
   sql:
     init:
-      mode: always
+      mode: never
+  cloud:
+    open-feign:
+      client:
+        config:
+          inventory-service: # название сервиса в @FeignClient
+            connectTimeout: 1000
+            readTimeout: 2000
+            loggerLevel: basic
+          product-service:
+            connectTimeout: 1000
+            readTimeout: 2000
+            loggerLevel: basic
+
+logging:
+  level:
+    ru.yandex.practicum.order.feign.InventoryClient: DEBUG
+    ru.yandex.practicum.order.feign.ProductClient: DEBUG

@@ -22,5 +22,10 @@ public record OrderItemRequest(
         @NotNull(message = "Цена обязательна")
         @DecimalMin(value = "0.01", message = "Цена должна быть больше нуля")
         BigDecimal price
+
+
 ) {
+    public OrderItemRequest(Long productId, Integer quantity) {
+        this(productId, null, quantity, null);
+    }
 }
