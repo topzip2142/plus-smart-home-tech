@@ -61,4 +61,18 @@ public class InventoryItem {
         }
         this.reservedQuantity += amount;
     }
+
+    public void release(int amount) {
+        if (amount < 0) {
+            throw new InvalidQuantityException(
+                    "Количество к снятию резерва не может быть отрицательным: " + amount);
+        }
+        if (amount > reservedQuantity) {
+            throw new InvalidQuantityException(
+                    "Нельзя снять резерв " + amount
+                            + " для productId=" + productId
+                            + " — зарезервировано только " + reservedQuantity);
+        }
+        this.reservedQuantity -= amount;
+    }
 }

@@ -31,7 +31,7 @@ public class OrderService {
         Order order = new Order();
         order.setCustomerName(request.customerName());
         order.setCustomerEmail(request.customerEmail());
-        order.setStatus(OrderStatus.CREATED);
+        order.setStatus(OrderStatus.CONFIRMED);
         request.items().stream()
                 .map(mapper::toEntity)
                 .forEach(order::addItem);

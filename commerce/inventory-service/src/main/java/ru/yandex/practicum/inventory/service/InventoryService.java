@@ -61,6 +61,17 @@ public class InventoryService {
         return new ReserveResponse(true, item.getAvailableQuantity(), "Товар успешно зарезервирован");
     }
 
+    @Transactional
+    public ReserveResponse release(ReserveRequest request) {
+        log.debug("Снятие резерва для productId={}", request.productId());
+        InventoryItem item = getItem(request.productId());
+        item.release(request.quantity());
+        InventoryDto dto = toDto(inventoryRepository.save(item));
+        log.info("Резерв снят: productId={}, доступно {}",
+                dto.productId(), dto.availableQuantity());
+        return new ReserveResponse(true, dto.availableQuantity(), "Отмена резервирования, - успешна");
+    }
+
     private InventoryItem getItem(Long productId) {
         return inventoryRepository.findByProductId(productId)
                 .orElseThrow(() -> new NotFoundException(
