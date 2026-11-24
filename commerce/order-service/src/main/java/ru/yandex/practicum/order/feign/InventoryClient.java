@@ -8,8 +8,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 public interface InventoryClient {
 
     @PostMapping("/api/inventory/reserve")
-    InventoryResponse reserveStock(@RequestBody InventoryRequest request);
+    InventoryResponse reserve(@RequestBody InventoryRequest request);
 
     @PostMapping("/api/inventory/release")
-    InventoryResponse releaseStock(@RequestBody InventoryRequest request);
+    InventoryResponse release(@RequestBody InventoryRequest request);
 }

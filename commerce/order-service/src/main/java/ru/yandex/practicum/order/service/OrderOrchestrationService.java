@@ -45,7 +45,7 @@ public class OrderOrchestrationService {
 
     private void getReserve(InventoryRequest request) {
         try {
-            inventoryClient.reserveStock(request);
+            inventoryClient.reserve(request);
         } catch (FeignException.NotFound exception) {
             log.warn("Складская запись для товара с id {} не найдена", request.productId());
             throw new OrderProcessingException(format("Складская запись для товара с id %d не найдена",
@@ -63,7 +63,7 @@ public class OrderOrchestrationService {
         for (int i = requestReserve.size() - 1; i >= 0; i--) {
             InventoryRequest request = requestReserve.get(i);
             try {
-                inventoryClient.releaseStock(request);
+                inventoryClient.release(request);
             } catch (FeignException exception) {
                 log.warn("Не удалось отменить резерв {} товара с id {}", request.quantity(), request.productId());
                 throw new OrderProcessingException(format("Не удалось отменить резерв %d товара с id %d",
