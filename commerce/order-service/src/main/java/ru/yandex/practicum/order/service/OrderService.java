@@ -27,18 +27,26 @@ public class OrderService {
     private final OrderMapper mapper;
 
     @Transactional
-    public OrderDto create(CreateOrderRequest request) {
+    public OrderDto create(CreateOrderRequest request, boolean isFullyReserved) {
+        log.debug("Добавление заказа {}", request);
+
+        BigDecimal totalPrice = request.items().stream()
+                .map(item -> item.price().multiply(BigDecimal.valueOf(item.quantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         Order order = new Order();
         order.setCustomerName(request.customerName());
         order.setCustomerEmail(request.customerEmail());
-        order.setStatus(OrderStatus.CONFIRMED);
+        order.setStatus(isFullyReserved ? OrderStatus.CONFIRMED : OrderStatus.PENDING_CONFIRMATION);
+        order.setStatusDetails(isFullyReserved ? null : "Заказ требует проверки!");
+        order.setTotalPrice(totalPrice);
+
         request.items().stream()
                 .map(mapper::toEntity)
                 .forEach(order::addItem);
-        order.setTotalPrice(calculateTotal(order.getItems()));
 
         Order saved = orderRepository.save(order);
-        log.info("Создан заказ id={} для {}, сумма {}", saved.getId(), saved.getCustomerEmail(), saved.getTotalPrice());
+        log.info("Заказ {} создан со статусом {}", saved, saved.getStatus());
         return mapper.toDto(saved);
     }
 
