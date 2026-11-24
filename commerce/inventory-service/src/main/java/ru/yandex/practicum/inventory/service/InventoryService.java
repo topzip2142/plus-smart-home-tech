@@ -63,16 +63,12 @@ public class InventoryService {
 
     @Transactional
     public ReserveResponse release(ReserveRequest request) {
-        log.debug("Возвращение товара с id {}", request.productId());
+        log.debug("Снятие резерва для productId={}", request.productId());
         InventoryItem item = getItem(request.productId());
-        if (item.getReservedQuantity() < request.quantity()) {
-            log.warn("Нельзя отменить резервирование товара с id {}: зарезервировано {}, к отмене {}",
-                    item.getProductId(), item.getReservedQuantity(), request.quantity());
-            throw new IllegalArgumentException("Нельзя отменить резервирование товара c id " + item.getProductId());
-        }
-        item.changeQuantity(item.getReservedQuantity() - request.quantity());
+        item.release(request.quantity());
         InventoryDto dto = toDto(inventoryRepository.save(item));
-        log.info("Отмена резервирования товара с id {}", dto.productId());
+        log.info("Резерв снят: productId={}, доступно {}",
+                dto.productId(), dto.availableQuantity());
         return new ReserveResponse(true, dto.availableQuantity(), "Отмена резервирования, - успешна");
     }
 
