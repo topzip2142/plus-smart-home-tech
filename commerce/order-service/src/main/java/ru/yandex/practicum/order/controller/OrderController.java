@@ -29,7 +29,7 @@ public class OrderController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public OrderDto create(@Valid @RequestBody CreateOrderRequest request) {
-        return orderOrchestrationService.create(request);
+        return orderOrchestrationService.createOrder(request);
     }
 
     @GetMapping("/{id}")
