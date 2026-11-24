@@ -3,7 +3,7 @@ server:
 
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/order_db
+    url: jdbc:postgresql://localhost:5433/order_db
     username: dbuser
     password: 12345
   jpa:
@@ -25,6 +25,21 @@ spring:
             connectTimeout: 1000
             readTimeout: 2000
             loggerLevel: basic
+      circuit-breaker:
+        enabled: true
+
+resilience4j:
+  circuit-breaker:
+    configs:
+      default:
+        sliding-window-size: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+  time-limiter:
+    configs:
+      default:
+        timeout-duration: 3s
 
 logging:
   level:
