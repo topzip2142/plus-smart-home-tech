@@ -7,7 +7,7 @@ spring:
       discovery:
         locator:
           enabled: false
-      global-cors:
+      globalcors:
         add-to-simple-url-handler-mapping: true
         cors-configurations:
           '[/**]':
